@@ -22,14 +22,16 @@ type TailServer struct {
 	removeClient chan chan TailMessage
 	clients      map[chan TailMessage]time.Time
 	Messaging    chan TailMessage
+	useEmbedded  bool
 }
 
-func NewServer(port int) (server *TailServer) {
+func NewServer(port int, useEmbedded bool) (server *TailServer) {
 	server = &TailServer{
 		addClient:    make(chan chan TailMessage),
 		removeClient: make(chan chan TailMessage),
 		clients:      make(map[chan TailMessage]time.Time),
 		Messaging:    make(chan TailMessage, 1),
+		useEmbedded:  useEmbedded,
 	}
 
 	go server.dispatch()
@@ -99,24 +101,29 @@ func setHeaders(rw http.ResponseWriter) {
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
-func (server *TailServer) ServeEmbed(rw http.ResponseWriter, filename string, mimeType string) {
-	rw.Header().Set("Content-Type", mimeType)
-	data, err := static.ReadFile("static/" + filename)
-	if err != nil {
-		http.Error(rw, "Not an embedded file: "+filename, http.StatusNotFound)
+func (server *TailServer) ServeEmbed(rw http.ResponseWriter, req *http.Request, filename string, mimeType string) {
+
+	if server.useEmbedded {
+		rw.Header().Set("Content-Type", mimeType)
+		data, err := static.ReadFile("static/" + filename)
+		if err != nil {
+			http.Error(rw, "Not an embedded file: "+filename, http.StatusNotFound)
+		}
+		rw.WriteHeader(http.StatusOK)
+		rw.Write(data)
+		return
 	}
-	rw.WriteHeader(http.StatusOK)
-	rw.Write(data)
+	http.ServeFile(rw, req, "server/static/"+filename)
 }
 
 func (server *TailServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch req.URL.Path {
 	case "/":
-		server.ServeEmbed(rw, "index.html", "text/html")
+		server.ServeEmbed(rw, req, "index.html", "text/html")
 	case "/style.css":
-		server.ServeEmbed(rw, "style.css", "text/css")
+		server.ServeEmbed(rw, req, "style.css", "text/css")
 	case "/httptail.js":
-		server.ServeEmbed(rw, "httptail.js", "text/javascript")
+		server.ServeEmbed(rw, req, "httptail.js", "text/javascript")
 	case "/events":
 		server.ServeEvents(rw, req)
 	default:
