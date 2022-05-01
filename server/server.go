@@ -3,11 +3,15 @@
 package server
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 )
+
+//go:embed static/*
+var static embed.FS
 
 type TailMessage struct {
 	Payload []byte
@@ -27,6 +31,7 @@ func NewServer(port int) (server *TailServer) {
 		clients:      make(map[chan TailMessage]time.Time),
 		Messaging:    make(chan TailMessage, 1),
 	}
+
 	go server.dispatch()
 	go server.listen(port)
 	return
@@ -47,7 +52,6 @@ func (server *TailServer) dispatch() {
 			log.Printf("Removed client, %d now connected", len(server.clients))
 		case message := <-server.Messaging:
 			for clientChannel := range server.clients {
-				// log.Print(message.Payload)
 				clientChannel <- message
 			}
 		}
@@ -59,29 +63,26 @@ func (server *TailServer) ServeEvents(rw http.ResponseWriter, req *http.Request)
 	flusher, ok := rw.(http.Flusher)
 	if !ok {
 		http.Error(rw, "Sorry, I can't stream events to you.", http.StatusInternalServerError)
+		return
 	}
 
-	log.Println("Setting headers")
 	setHeaders(rw)
 
-	log.Println("Making client channel")
 	clientChannel := make(chan TailMessage)
 	server.addClient <- clientChannel
 
-	fmt.Fprintln(rw, "Welcome aboard")
-	flusher.Flush()
-
 	defer func() {
-		log.Println("Closing client channel")
 		server.removeClient <- clientChannel
 	}()
 
 	done := req.Context().Done()
 	go func() {
 		<-done // That is, pause until done channel is closed
-		log.Println("Context reports done: Closing client channel")
 		server.removeClient <- clientChannel
 	}()
+
+	fmt.Fprint(rw, "data: Welcome aboard\n\n")
+	flusher.Flush()
 
 	for {
 		message := <-clientChannel
@@ -98,21 +99,25 @@ func setHeaders(rw http.ResponseWriter) {
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 }
 
+func (server *TailServer) ServeEmbed(rw http.ResponseWriter, filename string, mimeType string) {
+	rw.Header().Set("Content-Type", mimeType)
+	data, err := static.ReadFile("static/" + filename)
+	if err != nil {
+		http.Error(rw, "Not an embedded file: "+filename, http.StatusNotFound)
+	}
+	rw.WriteHeader(http.StatusOK)
+	rw.Write(data)
+}
+
 func (server *TailServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	log.Println(req.URL.Path)
 	switch req.URL.Path {
 	case "/":
-		// server.serveStatic(rw, req, "static/index.html")
-		log.Println("Serving HTML")
-		http.ServeFile(rw, req, "server/static/index.html")
+		server.ServeEmbed(rw, "index.html", "text/html")
 	case "/style.css":
-		log.Println("Serving stylesheet")
-		http.ServeFile(rw, req, "server/static/style.css")
+		server.ServeEmbed(rw, "style.css", "text/css")
 	case "/httptail.js":
-		log.Println("Serving JavaScript")
-		http.ServeFile(rw, req, "server/static/httptail.js")
+		server.ServeEmbed(rw, "httptail.js", "text/javascript")
 	case "/events":
-		log.Println("Adding event client")
 		server.ServeEvents(rw, req)
 	default:
 		http.Error(rw, "Never heard of her.", http.StatusNotFound)

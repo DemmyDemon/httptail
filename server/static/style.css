@@ -1,0 +1,16 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+body {
+    background-color: blue;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+#output {
+    resize: none;
+    height: 100%;
+    width: 100%;
+}
