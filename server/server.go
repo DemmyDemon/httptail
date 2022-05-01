@@ -124,6 +124,8 @@ func (server *TailServer) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		server.ServeEmbed(rw, req, "style.css", "text/css")
 	case "/httptail.js":
 		server.ServeEmbed(rw, req, "httptail.js", "text/javascript")
+	case "/favicon.ico":
+		server.ServeEmbed(rw, req, "favicon.ico", "image/x-icon")
 	case "/events":
 		server.ServeEvents(rw, req)
 	default:
