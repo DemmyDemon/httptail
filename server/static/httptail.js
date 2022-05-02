@@ -4,34 +4,27 @@ const autoScroll = document.querySelector("#autoscroll")
 output.value = ""
 let prefix = ""
 source.addEventListener('error', () => {
-    output.value += prefix + "--- Event source connection error ---"
-    prefix = "\n"
-    maybeScrollDown()
+    addOutput("--- Event source connection error ---")
 })
 source.addEventListener('open', () => {
-    output.value += prefix + "--- Event source opened ---"
-    prefix = "\n"
-    maybeScrollDown()
+    addOutput("--- Event source open ---")
 })
 source.addEventListener('message', (event) => {
     let data = JSON.parse(event.data)
-    // console.log(data)
     let skipLine = false
     if (data.context) {
         switch (data.context) {
             case "connect":
-                output.value += prefix + "--- Connected: " + data.line + " ---"
+                addOutput("--- Connected:", data.line, "---")
                 skipLine = true
                 break
             default:
-                output.value += prefix + "(Unknown context: " + data.context + ")"
+                addOutput("(Unknown context:", context, ")")
         }
     }
     if (data.line && !skipLine) {
-        output.value += prefix + data.line
+        addOutput(data.line)
     }
-    prefix = "\n"
-    maybeScrollDown()
 })
 output.addEventListener('scroll',()=>{
     if (output.offsetHeight + output.scrollTop >= output.scrollHeight){
@@ -40,6 +33,12 @@ output.addEventListener('scroll',()=>{
         autoScroll.checked = false
     }
 })
+function addOutput(...line) {
+    // TODO: Something to check what is selected and re-select after adding
+    output.value += prefix + line.join(' ')
+    prefix = "\n"
+    maybeScrollDown()
+}
 function maybeScrollDown() {
     if ( autoScroll.checked ){
         output.scrollTo(0, output.scrollHeight)
@@ -58,8 +57,7 @@ document.addEventListener('keydown', (event) => {
             let today = new Date();
             let date = today.getFullYear() + "-" + zeroPad( today.getMonth() + 1 ) + "-" + zeroPad( today.getDate() )
             let time = zeroPad( today.getHours() ) + ":" + zeroPad( today.getMinutes() ) + ":" + zeroPad( today.getSeconds() )
-            output.value += prefix + "---- " + date + " " + time + " ----"
-            maybeScrollDown()
+            addOutput("---", date, time, "---")
             break
     }
 })
