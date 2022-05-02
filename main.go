@@ -11,7 +11,7 @@ import (
 
 func main() {
 	cfg := config.GetConfiguration()
-	srv := server.NewServer(cfg.Port, cfg.UseEmbedded)
+	srv := server.NewServer(cfg)
 	tailer.TailFiles(cfg, srv)
 
 	c := make(chan os.Signal, 1)

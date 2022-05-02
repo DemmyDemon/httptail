@@ -4,18 +4,17 @@ package server
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/demmydemon/httptail/config"
 )
 
 //go:embed static/*
 var static embed.FS
-
-type TailMessage struct {
-	Payload []byte
-}
 
 type TailServer struct {
 	addClient    chan chan TailMessage
@@ -23,19 +22,21 @@ type TailServer struct {
 	clients      map[chan TailMessage]time.Time
 	Messaging    chan TailMessage
 	useEmbedded  bool
+	buffer       MessageBuffer
 }
 
-func NewServer(port int, useEmbedded bool) (server *TailServer) {
+func NewServer(cfg config.Configuration) (server *TailServer) {
 	server = &TailServer{
 		addClient:    make(chan chan TailMessage),
 		removeClient: make(chan chan TailMessage),
 		clients:      make(map[chan TailMessage]time.Time),
 		Messaging:    make(chan TailMessage, 1),
-		useEmbedded:  useEmbedded,
+		useEmbedded:  cfg.UseEmbedded,
+		buffer:       NewMessageBuffer(cfg.BufferLength),
 	}
 
 	go server.dispatch()
-	go server.listen(port)
+	go server.listen(cfg.Port)
 	return
 }
 
@@ -53,6 +54,7 @@ func (server *TailServer) dispatch() {
 			delete(server.clients, client)
 			log.Printf("Removed client, %d now connected", len(server.clients))
 		case message := <-server.Messaging:
+			server.buffer.Add(message)
 			for clientChannel := range server.clients {
 				clientChannel <- message
 			}
@@ -68,6 +70,8 @@ func (server *TailServer) ServeEvents(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
+	log.Printf("--> %s", req.RemoteAddr)
+
 	setHeaders(rw)
 
 	clientChannel := make(chan TailMessage)
@@ -75,20 +79,44 @@ func (server *TailServer) ServeEvents(rw http.ResponseWriter, req *http.Request)
 
 	defer func() {
 		server.removeClient <- clientChannel
+		log.Printf("<--x %s", req.RemoteAddr)
 	}()
 
 	done := req.Context().Done()
 	go func() {
 		<-done // That is, pause until done channel is closed
 		server.removeClient <- clientChannel
+		log.Printf("<-- %s", req.RemoteAddr)
 	}()
 
-	fmt.Fprint(rw, "data: Welcome aboard\n\n")
-	flusher.Flush()
+	messages := server.buffer.Get()
+
+	if len(messages) > 0 {
+
+		connect, err := json.Marshal(TailMessage{Context: "connect", Line: fmt.Sprintf("Backbuffer is %d lines", len(server.buffer.content))})
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+		fmt.Fprintf(rw, "data: %s\n\n", connect)
+		flusher.Flush()
+
+		for _, message := range messages {
+			msg, err := json.Marshal(message)
+			if err != nil {
+				log.Fatalf(err.Error())
+			}
+			fmt.Fprintf(rw, "data: %s\n\n", msg)
+			flusher.Flush()
+		}
+	}
 
 	for {
 		message := <-clientChannel
-		fmt.Fprintf(rw, "data: %s\n\n", message.Payload)
+		msg, err := json.Marshal(message)
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+		fmt.Fprintf(rw, "data: %s\n\n", msg)
 		flusher.Flush()
 	}
 
