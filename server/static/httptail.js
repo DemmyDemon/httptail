@@ -34,9 +34,13 @@ output.addEventListener('scroll',()=>{
     }
 })
 function addOutput(...line) {
-    // TODO: Something to check what is selected and re-select after adding
+    let start = output.selectionStart
+    let end = output.selectionEnd
     output.value += prefix + line.join(' ')
     prefix = "\n"
+    if ( start !== end && !autoScroll.checked){
+        output.setSelectionRange(start, end)
+    }
     maybeScrollDown()
 }
 function maybeScrollDown() {
@@ -58,6 +62,13 @@ document.addEventListener('keydown', (event) => {
             let date = today.getFullYear() + "-" + zeroPad( today.getMonth() + 1 ) + "-" + zeroPad( today.getDate() )
             let time = zeroPad( today.getHours() ) + ":" + zeroPad( today.getMinutes() ) + ":" + zeroPad( today.getSeconds() )
             addOutput("---", date, time, "---")
+            break
+        case " ":
+            autoScroll.checked = !autoScroll.checked
+            if (autoScroll.checked) {
+                output.setSelectionRange(0,0)
+            }
+            maybeScrollDown()
             break
     }
 })
