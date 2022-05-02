@@ -5,12 +5,13 @@ output.value = ""
 let prefix = ""
 source.addEventListener('error', () => {
     output.value += prefix + "--- Event source connection error ---"
-    maybeScrollDown(output)
+    prefix = "\n"
+    maybeScrollDown()
 })
 source.addEventListener('open', () => {
     output.value += prefix + "--- Event source opened ---"
     prefix = "\n"
-    maybeScrollDown(output)
+    maybeScrollDown()
 })
 source.addEventListener('message', (event) => {
     let data = JSON.parse(event.data)
@@ -30,7 +31,7 @@ source.addEventListener('message', (event) => {
         output.value += prefix + data.line
     }
     prefix = "\n"
-    maybeScrollDown(output)
+    maybeScrollDown()
 })
 output.addEventListener('scroll',()=>{
     if (output.offsetHeight + output.scrollTop >= output.scrollHeight){
@@ -39,9 +40,9 @@ output.addEventListener('scroll',()=>{
         autoScroll.checked = false
     }
 })
-function maybeScrollDown( elmt ) {
+function maybeScrollDown() {
     if ( autoScroll.checked ){
-        elmt.scrollTo(0, elmt.scrollHeight)
+        output.scrollTo(0, output.scrollHeight)
     }
 }
 function zeroPad( something ) {
@@ -58,6 +59,7 @@ document.addEventListener('keydown', (event) => {
             let date = today.getFullYear() + "-" + zeroPad( today.getMonth() + 1 ) + "-" + zeroPad( today.getDate() )
             let time = zeroPad( today.getHours() ) + ":" + zeroPad( today.getMinutes() ) + ":" + zeroPad( today.getSeconds() )
             output.value += prefix + "---- " + date + " " + time + " ----"
+            maybeScrollDown()
             break
     }
 })
