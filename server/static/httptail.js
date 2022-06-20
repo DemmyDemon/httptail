@@ -18,6 +18,14 @@ source.addEventListener('message', (event) => {
                 addOutput("--- Connected:", data.line, "---")
                 skipLine = true
                 break
+            case "error":
+                addOutput("-!! ", data.line, "!!-")
+                skipLine = true
+                break
+            case "truncate":
+                addOutput("-->", data.line, "<--")
+                skipLine = true
+                break
             default:
                 addOutput("(Unknown context:", context, ")")
         }

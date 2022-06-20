@@ -1,10 +1,11 @@
 package tailer
 
 import (
-	"fmt"
+	"bufio"
 	"io"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/demmydemon/httptail/config"
@@ -26,26 +27,72 @@ func TailFiles(cfg config.Configuration, srv *server.TailServer) {
 	}
 
 	file, err := os.Open(cfg.Files[0])
-
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+	defer file.Close()
+
 	lines := FileTail(file, cfg.BufferLength)
-	file.Close()
 	for _, line := range lines {
 		srv.Messaging <- server.TailMessage{Line: line}
 	}
+	FollowFile(file, srv)
+}
 
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			message := server.TailMessage{
-				Line: fmt.Sprintf("Test data: %v -- Really long line so I can test the line wrap stuff! It has to be at least this long: ---------------->", time.Now()),
+func FollowFile(file *os.File, srv *server.TailServer) {
+	reader := bufio.NewReader(file)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				srv.Messaging <- server.TailMessage{
+					Line:    "Read error (" + file.Name() + "): " + err.Error(),
+					Context: "error",
+				}
+				break
 			}
-			srv.Messaging <- message
-		}
-	}()
+			truncated, err := FileWasTruncated(file)
+			if err != nil {
+				srv.Messaging <- server.TailMessage{
+					Line:    "Access error (" + file.Name() + "): " + err.Error(),
+					Context: "error",
+				}
+				break
+			}
+			if truncated {
+				srv.Messaging <- server.TailMessage{
+					Line:    file.Name() + " was truncated",
+					Context: "truncate",
+				}
+				_, err := file.Seek(0, io.SeekStart)
+				if err != nil {
+					srv.Messaging <- server.TailMessage{
+						Line:    "Seek error (" + file.Name() + "): " + err.Error(),
+						Context: "error",
+					}
+					break
+				}
+			}
+			time.Sleep(1 * time.Second) // Some space betwen pollings so it doesn't choke the CPU with EOF handling
 
+			continue
+		}
+		srv.Messaging <- server.TailMessage{
+			Line: strings.TrimSuffix(line, "\n"),
+		}
+	}
+}
+
+func FileWasTruncated(file *os.File) (bool, error) {
+	position, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return false, err
+	}
+	stat, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+	return position > stat.Size(), nil
 }
 
 func FileTail(file *os.File, numberOfLines int) []string {
